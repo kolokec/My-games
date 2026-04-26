@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moje hry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #06090f;
+    --surface: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --cyan: #00d4ff;
+    --magenta: #ff2d78;
+    --text: #e8eaf0;
+    --muted: rgba(232,234,240,0.45);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── City + weather canvas ── */
+  #city {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Gradient overlay on top of rain ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 10%, rgba(0,212,255,0.07) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(255,45,120,0.06) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ── Layout ── */
+  .wrapper {
+    position: relative;
+    z-index: 2;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 clamp(16px, 3vw, 48px);
+  }
+
+  /* ── Header ── */
+  header {
+    position: relative;
+    padding: clamp(32px, 6vw, 72px) 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .header-label {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    opacity: 0.8;
+  }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(52px, 10vw, 120px);
+    line-height: 0.92;
+    letter-spacing: 0.01em;
+    color: var(--text);
+  }
+
+  h1 span {
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(232,234,240,0.3);
+  }
+
+  .header-meta {
+    margin-top: 18px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .header-meta .count {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    color: var(--magenta);
+    line-height: 1;
+  }
+
+  .divider-line {
+    width: 40px;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Spacer ── */
+  .spacer {
+    height: clamp(32px, 5vw, 64px);
+  }
+
+  /* ── Masonry grid ── */
+  .grid {
+    columns: 6;
+    column-gap: 3px;
+  }
+
+  @media (max-width: 900px) { .grid { columns: 4; } }
+  @media (max-width: 540px) { .grid { columns: 3; } }
+
+  .tile {
+    position: relative;
+    break-inside: avoid;
+    margin-bottom: 3px;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--surface);
+    display: block;
+  }
+
+  .tile img {
+    width: 100%;
+    height: auto;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                filter 0.4s ease;
+    filter: saturate(0.85) brightness(0.92);
+  }
+
+
+  .tile:hover img {
+    transform: scale(1.06);
+    filter: saturate(1.1) brightness(1.05);
+  }
+
+  /* Hover overlay */
+  .tile::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to top,
+      rgba(0,0,0,0.72) 0%,
+      rgba(0,0,0,0.0) 50%
+    );
+    opacity: 0;
+    transition: opacity 0.35s ease;
+  }
+
+  .tile:hover::after {
+    opacity: 1;
+  }
+
+  .tile-name {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 10px 10px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: #fff;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    z-index: 2;
+    line-height: 1.3;
+  }
+
+  .tile:hover .tile-name {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Fallback tile (no image loaded) */
+  .tile-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    text-align: center;
+    background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 100%);
+    border: 1px solid var(--border);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(13px, 1.4vw, 16px);
+    letter-spacing: 0.06em;
+    color: rgba(232,234,240,0.55);
+    line-height: 1.25;
+    transition: background 0.3s, color 0.3s;
+  }
+
+  .tile:hover .tile-fallback {
+    background: linear-gradient(135deg, rgba(0,212,255,0.05) 0%, rgba(255,45,120,0.05) 100%);
+    color: rgba(232,234,240,0.85);
+  }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 80px;
+    padding: 32px 0 40px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  footer p {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+
+  footer a {
+    color: var(--cyan);
+    text-decoration: none;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+
+  footer a:hover { opacity: 1; }
+
+  /* ── Skip link (a11y) ── */
+  .skip-link {
+    position: absolute;
+    top: -999px;
+    left: 8px;
+    background: var(--cyan);
+    color: #000;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 2px;
+    z-index: 9999;
+  }
+  .skip-link:focus { top: 8px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 480px) {
+    .grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<a href="#games" class="skip-link">Přeskočit na obsah</a>
+
+<canvas id="city"></canvas>
+
+<div class="wrapper">
+  <header>
+    <span class="header-label">Sbírka deskových her</span>
+    <h1>Moje<br><span>hry</span></h1>
+    <div class="header-meta">
+      <span class="count">31</span>
+      <div class="divider-line"></div>
+      <span>her ve sbírce</span>
+    </div>
+  </header>
+
+  <div class="spacer"></div>
+
+  <main id="games">
+    <div class="grid" id="grid"></div>
+  </main>
+
+  <footer>
+    <p>© 2026 Moje hry &nbsp;·&nbsp; Osobní sbírka deskových her</p>
+  </footer>
+</div>
+
+<script>
+// ── City skyline + Rain + Snow ───────────────────────────────────
+(function() {
+  const canvas = document.getElementById('city');
+  const ctx = canvas.getContext('2d');
+  let W, H, buildings, rain;
+
+  // Neon window flicker state
+  const flickerTimers = [];
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function randInt(a, b) { return Math.floor(rand(a, b)); }
+
+  // ── Build city silhouette ──
+  function buildCity() {
+    buildings = [];
+    const layers = [
+      // [count, minH, maxH, minW, maxW, colorRange]
+      { n: 14, minH: 0.20, maxH: 0.45, minW: 60, maxW: 120, alpha: 0.55 }, // far
+      { n: 10, minH: 0.30, maxH: 0.60, minW: 80, maxW: 160, alpha: 0.80 }, // mid
+      { n:  7, minH: 0.25, maxH: 0.50, minW: 90, maxW: 180, alpha: 1.00 }, // near
+    ];
+
+    layers.forEach((layer, li) => {
+      let x = -50;
+      for (let i = 0; i < layer.n; i++) {
+        const w = randInt(layer.minW, layer.maxW);
+        const h = rand(layer.minH, layer.maxH) * H;
+        const y = H - h;
+        const windows = [];
+        const cols = Math.floor(w / 14);
+        const rows = Math.floor(h / 18);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (Math.random() > 0.45) {
+              windows.push({
+                x: x + 6 + c * 14,
+                y: y + 8 + r * 18,
+                on: Math.random() > 0.3,
+                flicker: Math.random() > 0.88,
+                // neon color: cyan, amber, white, magenta
+                color: ['#00d4ff','#00d4ff','#ffc060','#ffffff','#ff2d78'][randInt(0,5)],
+              });
+            }
+          }
+        }
+        buildings.push({ x, y, w, h, alpha: layer.alpha, windows, layer: li });
+        x += w + randInt(-10, 20);
+      }
+    });
+  }
+
+  // ── Rain ──
+  function initRain() {
+    const count = Math.floor(W * 0.14);
+    rain = Array.from({ length: count }, () => ({
+      x: rand(0, W),
+      y: rand(0, H),
+      len: rand(10, 22),
+      speed: rand(5, 12),
+      opacity: rand(0.08, 0.38),
+      w: rand(0.4, 0.9),
+    }));
+  }
+
+  // ── Draw frame ──
+  let frame = 0;
+  function draw() {
+    frame++;
+    ctx.clearRect(0, 0, W, H);
+
+    // Sky gradient
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0,   'rgba(4,8,18,1)');
+    sky.addColorStop(0.5, 'rgba(8,14,30,1)');
+    sky.addColorStop(1,   'rgba(14,20,38,1)');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // Distant glow (city light pollution)
+    const glow = ctx.createRadialGradient(W*0.5, H*0.72, 0, W*0.5, H*0.72, W*0.55);
+    glow.addColorStop(0,   'rgba(0,100,160,0.18)');
+    glow.addColorStop(0.5, 'rgba(255,80,30,0.07)');
+    glow.addColorStop(1,   'transparent');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // Buildings (back to front)
+    [0,1,2].forEach(li => {
+      buildings.filter(b => b.layer === li).forEach(b => {
+        ctx.globalAlpha = b.alpha * 0.9;
+        // Slightly bluish dark fill
+        const shade = li === 0 ? '#090e1a' : li === 1 ? '#0b1220' : '#0d1528';
+        ctx.fillStyle = shade;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+
+        // Windows
+        ctx.globalAlpha = b.alpha;
+        b.windows.forEach(win => {
+          if (win.flicker && frame % randInt(40,120) === 0) win.on = !win.on;
+          if (!win.on) return;
+          ctx.fillStyle = win.color;
+          ctx.globalAlpha = b.alpha * rand(0.35, 0.65);
+          ctx.fillRect(win.x, win.y, 5, 8);
+        });
+
+        ctx.globalAlpha = 1;
+      });
+    });
+
+    // Ground reflection
+    const ref = ctx.createLinearGradient(0, H*0.82, 0, H);
+    ref.addColorStop(0, 'rgba(0,100,160,0.12)');
+    ref.addColorStop(0.5,'rgba(255,60,100,0.06)');
+    ref.addColorStop(1,  'rgba(0,0,0,0.0)');
+    ctx.fillStyle = ref;
+    ctx.fillRect(0, H*0.82, W, H*0.18);
+
+    // Rain
+    rain.forEach(d => {
+      ctx.strokeStyle = `rgba(160,210,255,${d.opacity})`;
+      ctx.lineWidth = d.w;
+      ctx.beginPath();
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x - 1, d.y + d.len);
+      ctx.stroke();
+      d.y += d.speed;
+      if (d.y > H + d.len) { d.y = -d.len; d.x = rand(0, W); }
+    });
+
+    requestAnimationFrame(draw);
+  }
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    buildCity();
+    initRain();
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  draw();
+})();
+
+// ── Game data ───────────────────────────────────────────────────
+const games = [
+  { name: "Azul",                   slug: "azul" },
+  { name: "Quartino",               slug: "quartino" },
+  { name: "Genius Square",          slug: "genius-square" },
+  { name: "Munchkin",               slug: "munchkin" },
+  { name: "Bájné kostky",           slug: "bajne-kostky" },
+  { name: "Krycí jména",            slug: "kryci-jmena" },
+  { name: "Krycí jména – Obrázky",  slug: "kryci-jmena-obrazky" },
+  { name: "Vydry",                  slug: "vydry" },
+  { name: "Flip 7",                 slug: "flip-7" },
+  { name: "Podělaná smůla",         slug: "podelana-smula" },
+  { name: "Trio",                   slug: "trio" },
+  { name: "The Mind",               slug: "the-mind" },
+  { name: "Pirátské kostky",        slug: "piratske-kostky" },
+  { name: "Codex Naturalis",        slug: "codex-naturalis" },
+  { name: "Osmero",                 slug: "osmero" },
+  { name: "U mě dobrý",            slug: "u-me-dobry" },
+  { name: "All in",                 slug: "all-in" },
+  { name: "Ovce v masce",           slug: "ovce-v-masce" },
+  { name: "Naiši",                  slug: "naishi" },
+  { name: "Word Bits",              slug: "word-bits" },
+  { name: "Jungo",                  slug: "jungo" },
+  { name: "6 bere! Baron Vůl",      slug: "6-bere-baron-vul" },
+  { name: "Zlato nebo život",       slug: "zlato-nebo-zivot" },
+  { name: "Ztracená města",         slug: "ztracena-mesta" },
+  { name: "Monopoly",               slug: "monopoly" },
+  { name: "Othello na cesty",       slug: "othello-na-cesty" },
+  { name: "Bang!",                  slug: "bang" },
+  { name: "Město duchů Bang!",      slug: "bang-mesto-duchu" },
+  { name: "Canasta The Simpsons",   slug: "canasta-simpsons" },
+  { name: "Canasta Gothic",         slug: "canasta-gothic" },
+  { name: "echoes KOKTEJL",         slug: "echoes-koktejl" },
+  { name: "70tá léta – Kvízy do kapsy", slug: "70ta-leta-kvizy" },
+];
+
+// Local images (images/ folder next to index.html)
+// Hry bez obrázku zatím zobrazí textový fallback
+const imageUrls = {
+  "azul":               "images/azul.png",
+  "genius-square":      "images/genius-square.png",
+  "bajne-kostky":       "images/bajne-kostky.png",
+  "kryci-jmena":        "images/kryci-jmena.png",
+  "kryci-jmena-obrazky":"images/kryci-jmena-obrazky.png",
+  "flip-7":             "images/flip-7.png",
+  "codex-naturalis":    "images/codex-naturalis.png",
+  "all-in":             "images/all-in.png",
+  "jungo":              "images/jungo.png",
+  "6-bere-baron-vul":   "images/6-bere-baron-vul.png",
+  "bang":               "images/bang.png",
+  "bang-mesto-duchu":   "images/bang-mesto-duchu.png",
+  "canasta-simpsons":   "images/canasta-simpsons.png",
+  "canasta-gothic":     "images/canasta-gothic.png",
+  "echoes-koktejl":     "images/echoes-koktejl.png",
+  "70ta-leta-kvizy":    "images/70ta-leta-kvizy.png",
+  "monopoly":           "images/monopoly.png",
+  "munchkin":           "images/munchkin.png",
+  "naishi":             "images/naishi.png",
+  "osmero":             "images/osmero.png",
+  "othello-na-cesty":   "images/othello-na-cesty.png",
+  "ovce-v-masce":       "images/ovce-v-masce.png",
+  "piratske-kostky":    "images/piratske-kostky.png",
+  "podelana-smula":     "images/podelana-smula.png",
+  "quartino":           "images/quartino.png",
+  "the-mind":           "images/the-mind.png",
+  "trio":               "images/trio.png",
+  "u-me-dobry":         "images/u-me-dobry.png",
+  "vydry":              "images/vydry.png",
+  "word-bits":          "images/word-bits.png",
+  "zlato-nebo-zivot":   "images/zlato-nebo-zivot.png",
+  "ztracena-mesta":     "images/ztracena-mesta.png",
+};
+
+// Build grid
+const grid = document.getElementById('grid');
+const uniqueGames = games.filter((g, i, arr) => arr.findIndex(x => x.name === g.name) === i);
+
+uniqueGames.forEach(game => {
+  const tile = document.createElement('div');
+  tile.className = 'tile';
+  tile.setAttribute('title', game.name);
+
+  const url = imageUrls[game.slug];
+
+  if (url) {
+    const img = document.createElement('img');
+    img.alt = game.name;
+    img.loading = 'lazy';
+    img.decoding = 'async';
+
+    img.onerror = () => {
+      img.remove();
+      tile.innerHTML = `<div class="tile-fallback">${game.name}</div>`;
+    };
+    img.src = url;
+    tile.appendChild(img);
+  } else {
+    tile.innerHTML = `<div class="tile-fallback">${game.name}</div>`;
+  }
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'tile-name';
+  nameEl.textContent = game.name;
+  tile.appendChild(nameEl);
+
+  grid.appendChild(tile);
+});
+
+// Update count
+document.querySelector('.count').textContent = uniqueGames.length;
+</script>
+</body>
+</html>
